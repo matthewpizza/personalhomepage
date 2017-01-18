@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Personal Home Page</title>
+    <style>
+      @font-face {
+        font-family: 'terminal_grotesque';
+        src: url('/fonts/terminal-grotesque-webfont.eot');
+        src: url('/fonts/terminal-grotesque-webfont.eot?#iefix') format('embedded-opentype'),
+             url('/fonts/terminal-grotesque-webfont.woff2') format('woff2'),
+             url('/fonts/terminal-grotesque-webfont.woff') format('woff'),
+             url('/fonts/terminal-grotesque-webfont.ttf') format('truetype'),
+             url('/fonts/terminal-grotesque-webfont.svg#terminal_grotesqueregular') format('svg');
+        font-weight: normal;
+        font-style: normal;
+      }
+      *,
+      *:before,
+      *:after {
+        box-sizing: border-box;
+      }
+      html {
+        font-family: terminal_grotesque;
+        background-color: #050505;
+        color: rgb(165, 165, 165);
+      }
+      body {
+        font-size: 1.2rem;
+        margin: 1rem;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      h5 {
+        font-weight: normal;
+        line-height: 1.2;
+      }
+      h1 {
+        font-size: 4rem;
+        text-align: center;
+      }
+      h4 {
+        margin-top: 0;
+      }
+      a {
+        color: rgb(189, 122, 11);
+        text-decoration: none;
+      }
+      ul {
+        margin-left: 0;
+        padding-left: 1em;
+      }
+      audio {
+        -webkit-filter: invert(100%);
+        -webkit-font-smoothing: none;
+        outline: 1px solid rgba(66, 133, 244, 0.6);
+      }
+      section {
+        margin-bottom: 1rem;
+      }
+      .clearfix::after {
+        display: block;
+        content: "";
+        clear: both;
+      }
+      article {
+        width: 33%;
+        float: left;
+        padding: 0 1rem;
+      }
+      .now {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        text-align: right;
+        font-family: Menlo;
+        font-size: 1rem;
+        -webkit-font-smoothing: none;
+        letter-spacing: 0.1rem;
+        transform: scale(1, 1.6);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WWW_PORTAL</h1>
+    <div class="now"></div>
+    <section class="podcast clearfix">
+      <h2>\RADIO</h2>
+      <article class="podcast-item">
+        <h4 class="news-source">WNYC</h4>
+        <audio src="http://fm939.wnyc.org/wnycfm" controls></audio>
+      </article>
+    </section>
+    <section class="latest-news clearfix">
+      <h2>\FRONT_PAGE</h2>
+    </section>
+    <script src="/bower_components/jquery/dist/jquery.min.js"></script>
+    <script src="/bower_components/underscore/underscore-min.js"></script>
+    <script src="/bower_components/backbone/backbone-min.js"></script>
+    <script>
+      'use strict';
+
+      var $now = $('.now');
+
+      function renderTime() {
+        var currentTime = new Date();
+        var diem = 'AM';
+        var h = currentTime.getHours();
+        var m = currentTime.getMinutes();
+        var s = currentTime.getSeconds();
+
+        if (h === 0) {
+          h = 12;
+        } else if (h > 12) {
+          h = h - 12;
+          diem = 'PM';
+        }
+
+        if (m < 10) {
+          m = '0' + m;
+        }
+        if (s < 10) {
+          s = '0' + s;
+        }
+        var output = {
+          hours: h,
+          minutes: m,
+          seconds: s,
+          diem: diem
+        };
+        return output;
+      }
+
+      var time = renderTime();
+      $now.text(`${time.hours}:${time.minutes}:${time.seconds} ${time.diem}`);
+
+      setInterval(function () {
+        var time = renderTime();
+        $now.text(`${time.hours}:${time.minutes}:${time.seconds} ${time.diem}`);
+      }, 1000);
+
+      var StateModel = Backbone.Model.extend({
+        type: 'state',
+        default: {
+          lastUpdated: 0,
+        }
+      });
+
+      var NewsView = Backbone.View.extend({
+        type: 'news',
+        initialize: function (source) {
+          this.source = source;
+          this.collection = new RSSCollection();
+          this.listenToOnce(this.collection, 'sync', this.render);
+          this.collection.fetch({
+            url: `/proxy.php?url=${source.url}`,
+            dataType: source.dataType
+          });
+        },
+        render: function () {
+          var models = this.collection.toJSON().slice(0, 4);
+
+          var html = _.template(`
+            <article class="news">
+              <h4 class="news-source"><%= source.name %></h4>
+              <ul>
+                <% _.each(models, function (model) { %>
+                  <li><a href="<%= model.link %>" target="_blank"><%= model.title %></a></li>
+                <% }); %>
+              </ul>
+            </article>
+          `)({
+            models: models,
+            source: this.source
+          });
+
+          $('.latest-news').append(html);
+        }
+      });
+
+      var PodcastView = Backbone.View.extend({
+        type: 'podcast',
+        initialize: function (source) {
+          this.source = source;
+          this.collection = new PodcastCollection();
+          this.listenToOnce(this.collection, 'sync', this.render);
+          this.collection.fetch({
+            url: `/proxy.php?url=${source.url}`,
+            dataType: source.dataType
+          });
+        },
+        render: function () {
+          var model = this.collection.first().toJSON();
+          model.source = this.source;
+          var html = _.template(`
+            <article class="podcast-item">
+              <h4 class="news-source">
+                <%= source.name %>
+                <a href="<%= link %>" target="_blank"><%= new Date(pubDate).toISOString().slice(0, 10) %></a>
+              </h4>
+              <% if ('audio' === source.medium) { %>
+                <audio src="<%= media %>" controls></audio>
+              <% } else { %>
+                <%= content %>
+              <% } %>
+            </article>
+          `)(model);
+
+          $('.podcast').append(html);
+        }
+      });
+
+      var RSSItemModel = Backbone.Model.extend({
+        type: 'rss/item',
+        default: {
+          title: '',
+          link: '',
+          description: '',
+          pubDate: ''
+        }
+      })
+
+      var RSSCollection = Backbone.Collection.extend({
+        type: 'rss',
+        update: 'hourly',
+        model: RSSItemModel,
+        parse: function (data) {
+          var $xml  = $(data);
+          var items = $xml.find('item');
+
+          return _.map(items, function (item) {
+            var $item = $(item);
+
+            return {
+              title      : _.unescape($item.find('title').html()).replace('<![CDATA[', '').replace(']]>', ''),
+              link       : $item.find('link').html(),
+              description: _.unescape($item.find('description').html()),
+              pubDate    : $item.find('pubDate').html(),
+            }
+          });
+        },
+        // fetch: function () {}
+      });
+
+      var PodcastItemModel = Backbone.Model.extend({
+        type: 'podcast/item',
+        default: {
+          title: '',
+          link: '',
+          description: '',
+          pubDate: '',
+          media: ''
+        }
+      });
+
+      var PodcastCollection = Backbone.Collection.extend({
+        type: 'podcast',
+        model: PodcastItemModel,
+        parse: function (data) {
+          var $xml  = $(data);
+          var items = $xml.find('item');
+
+          return _.map(items, function (item) {
+            var $item = $(item);
+
+            return {
+              title      : _.unescape($item.find('title').html()).replace('<![CDATA[', '').replace(']]>', ''),
+              link       : $item.find('link').html(),
+              description: _.unescape($item.find('description').html()),
+              pubDate    : $item.find('pubDate').html(),
+              media      : $item.find('enclosure').attr('url'),
+              content    : _.unescape($item.find('content').html()).replace('<![CDATA[', '').replace(']]>', ''),
+            }
+          });
+        },
+      });
+
+      var manifest = [
+        {
+          url     : 'https://www.theguardian.com/world/rss',
+          name    : 'The Guardian',
+          id      : 'guardian-world',
+          type    : 'rss',
+          dataType: 'xml',
+          update  : 'hourly'
+        },
+        {
+          url     : 'http://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+          name    : 'The New York Times',
+          id      : 'nytimes-world',
+          type    : 'rss',
+          dataType: 'xml',
+          update  : 'hourly'
+        },
+        {
+          url     : 'http://feeds.washingtonpost.com/rss/world',
+          name    : 'The Washington Post',
+          id      : 'washingtonpost-world',
+          type    : 'rss',
+          dataType: 'xml',
+          update  : 'hourly'
+        },
+        {
+          url     : 'https://www.democracynow.org/podcast.xml',
+          name    : 'Democracy Now!',
+          id      : 'democracynow-dailyshow',
+          type    : 'podcast',
+          medium  : 'audio',
+          dataType: 'xml',
+          update  : 'daily'
+        },
+        {
+          url     : 'http://feeds.feedburner.com/NewshourFullProgramPodcast',
+          name    : 'PBS NewsHour',
+          id      : 'pbs-newshour',
+          type    : 'podcast',
+          medium  : 'audio',
+          dataType: 'xml',
+          update  : 'daily'
+        }
+      ];
+
+      var WWW_PORTAL = {
+        views: {}
+      };
+
+      _.each(manifest, function (source, index) {
+        switch (source.type) {
+          case 'rss':
+            WWW_PORTAL.views[source.id] = new NewsView(source);
+            break;
+          case 'podcast':
+            WWW_PORTAL.views[source.id] = new PodcastView(source);
+            break;
+        }
+      });
+    </script>
+  </body>
+</html>
